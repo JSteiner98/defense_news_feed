@@ -1,0 +1,5 @@
+feedparser==6.0.12
+graphviz==0.21
+pydantic==2.12.5
+python-dotenv==1.2.1
+requests==2.32.5
