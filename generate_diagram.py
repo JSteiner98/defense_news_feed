@@ -17,6 +17,7 @@ C_SCORE    = "#FFE8D6"   # orange — scoring / math
 C_DECISION = "#FFF3CD"   # amber  — decision points
 C_OUTPUT   = "#FFE0E0"   # red    — final outputs
 C_MISS     = "#F0F0F0"   # grey   — filtered-out items
+C_NOTE     = "#FFFDE7"   # light yellow — tuning notes / troubleshooting
 C_TITLE    = "#1A1A2E"   # dark navy — title block
 C_BORDER   = "#444444"
 FONT       = "Helvetica"
@@ -72,6 +73,19 @@ def diamond(name, title, subtitle=""):
 
 def edge(a, b, label="", **kw):
     g.edge(a, b, label=f"  {label}  " if label else "", **kw)
+
+def note(name: str, title: str, lines: list[str]) -> None:
+    """Renders a folded-corner annotation box with a bold title and bullet lines."""
+    body = "<BR/>".join(
+        f'<FONT POINT-SIZE="8" COLOR="#555555">{l}</FONT>' for l in lines
+    )
+    label = f'<<B>{title}</B><BR/>{body}>'
+    g.node(name, label=label, shape="note", style="filled", fillcolor=C_NOTE,
+           fontname=FONT, fontsize="10", color="#BBAA00", penwidth="1.2")
+
+def note_edge(a: str, b: str) -> None:
+    """Dashed, arrowless edge for connecting a node to its annotation."""
+    g.edge(a, b, style="dashed", color="#BBAA00", penwidth="1.0", arrowhead="none")
 
 # ═════════════════════════════════════════════════════════════════════════════
 # TITLE BLOCK
@@ -149,7 +163,7 @@ with g.subgraph(name="cluster_scoring") as sc:
             fontcolor="#8338EC", fontsize="10", fontname=FONT,
         )
         llm.node("ollama",
-            label=hl("Ollama (Llama 3.2)", "Local LLM · structured rubric prompt"),
+            label=hl("Ollama (Llama 3.2)", "Local LLM · revised rubric prompt (Mar 2026)"),
             shape="box", style="filled,rounded", fillcolor=C_LLM,
             fontname=FONT, fontsize="11", color=C_BORDER, penwidth="1.5")
         llm.node("llm_resp",
@@ -163,7 +177,7 @@ with g.subgraph(name="cluster_scoring") as sc:
         shape="box", style="filled,rounded", fillcolor=C_SCORE,
         fontname=FONT, fontsize="11", color=C_BORDER, penwidth="1.5")
 
-diamond("threshold", "Score ≥ 4?", "RELEVANCE_THRESHOLD")
+diamond("threshold", "Score ≥ 3?", "RELEVANCE_THRESHOLD = 3 (articles)")
 
 box("article_rec", "Article Record", "title · score · summary · category · source",
     color=C_PROCESS)
@@ -192,7 +206,7 @@ with g.subgraph(name="cluster_sam") as sam:
         shape="box", style="filled,rounded", fillcolor=C_PROCESS,
         fontname=FONT, fontsize="11", color=C_BORDER, penwidth="1.5")
 
-diamond("sam_thresh", "Score ≥ 4?")
+diamond("sam_thresh", "Score ≥ 7?", "CONTRACT_THRESHOLD = 7")
 box("sam_hit", "Contract Record", "title · score · summary · deadline · link",
     color=C_PROCESS)
 
@@ -216,6 +230,43 @@ with g.subgraph(name="cluster_output") as out:
         fontname=FONT, fontsize="11", color=C_BORDER, penwidth="1.5")
 
 # ═════════════════════════════════════════════════════════════════════════════
+# TROUBLESHOOTING ANNOTATIONS
+# ═════════════════════════════════════════════════════════════════════════════
+note("note_rubric", "LLM Rubric Rewrite (Mar 2026)", [
+    "Problem: old 5-7 bucket was vague ('useful background').",
+    "LLM often scored good articles at 5 → composite 3.0 → filtered out.",
+    "Fix: new 6-7 explicitly covers strategic policy, geopolitics w/ military-",
+    "industrial angle, acquisition/budget news, shipbuilding — clear examples given.",
+    "New 3-5: broad military/political, limited defense-tech signal (still passes).",
+    "Also tried: Gemini API (replaced w/ local Ollama — no rate limits or costs).",
+])
+
+note("note_article_thresh", "Article Threshold History", [
+    "Problem: threshold=4 killed articles with LLM=5.",
+    "Math: 5 × 0.6 = 3.0 composite — below old threshold of 4.",
+    "Fix: lowered to RELEVANCE_THRESHOLD=3 (Mar 2026).",
+    "Future: could drop to 2 if noise increases; raise back to 4 if too broad.",
+    "Also watch: TITLE_MULTIPLIER=2 boosts keyword-heavy articles significantly.",
+])
+
+note("note_contract_thresh", "Contract Threshold History", [
+    "Problem: shared threshold=4 let nearly all defense contracts through.",
+    "Root cause: contract prompt's 5-7 bucket ('general defense') was too broad;",
+    "LLM scored most SAM.gov results at 5+ → composite 4 → passed.",
+    "Fix: split to CONTRACT_THRESHOLD=7 — contracts must be specifically relevant.",
+    "Future: could cap SAM search limit (currently 10/query), or add keyword",
+    "pre-filter before scoring to avoid scoring clearly irrelevant items.",
+])
+
+note("note_tuning", "Scoring Tuning Levers", [
+    "Composite weights: 60% LLM / 40% KW — adjust if keywords over/under-weight.",
+    "KW normalization: raw ÷ 6 × 10 — lower divisor = keywords matter more.",
+    "ENTRIES_PER_FEED=3 — increase to scan more articles per feed.",
+    "OLLAMA_MODEL=llama3.2 — try larger model for better nuance.",
+    "Future: could cache LLM scores to avoid re-scoring unchanged articles.",
+])
+
+# ═════════════════════════════════════════════════════════════════════════════
 # LEGEND
 # ═════════════════════════════════════════════════════════════════════════════
 with g.subgraph(name="cluster_legend") as leg:
@@ -234,6 +285,7 @@ with g.subgraph(name="cluster_legend") as leg:
         ("leg_decision", C_DECISION, "Decision"),
         ("leg_output",   C_OUTPUT,   "Output"),
         ("leg_miss",     C_MISS,     "Filtered Out"),
+        ("leg_note",     C_NOTE,     "Tuning Note"),
     ]
     prev = None
     for nid, color, label in items:
@@ -285,6 +337,12 @@ edge("article_rec","email")
 edge("sam_hit",    "run_log")
 edge("sam_hit",    "email")
 edge("miss",       "run_log", style="dashed", color="#AAAAAA")
+
+# Annotation connections
+note_edge("ollama",     "note_rubric")
+note_edge("threshold",  "note_article_thresh")
+note_edge("sam_thresh", "note_contract_thresh")
+note_edge("composite",  "note_tuning")
 
 # ═════════════════════════════════════════════════════════════════════════════
 # RENDER

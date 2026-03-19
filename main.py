@@ -20,7 +20,8 @@ sam_api_key = os.getenv("SAM_GOV_API_KEY")
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "llama3.2"
 ENTRIES_PER_FEED = 3    # articles to check per feed
-RELEVANCE_THRESHOLD = 4 # minimum composite score (0-10) to include in digest
+RELEVANCE_THRESHOLD = 3 # minimum composite score (0-10) for news articles
+CONTRACT_THRESHOLD = 7  # higher bar for SAM.gov contracts — must be specifically relevant
 
 KEYWORD_TIERS: dict[str, int] = {
     # Tier 1 (weight 3) — highly specific, almost always means relevance
@@ -242,16 +243,23 @@ def analyze_article(title: str, snippet: str) -> dict | None:
 Score the article below on a 0-10 scale using this rubric:
 
   8-10: Directly mentions a priority keyword ({keywords_str}) OR covers
-        a specific contract award, weapon-system milestone, or policy change
-        in maritime defense / autonomous systems / defense AI.
+        a specific contract award, weapon-system milestone, or capability
+        announcement in maritime defense / autonomous systems / defense AI.
         Examples: "Navy awards $400M sealift contract", "Anduril unveils
-        autonomous patrol boat".
-  5-7:  General defense-industry or military news that is useful background
-        but does not mention priority keywords or a specific program.
-        Examples: "Pentagon budget request overview", "NATO exercises in
-        the Baltic".
-  1-4:  Tangentially related — mentions the military but focuses on
-        politics, lifestyle, or broad geopolitics with no defense-tech angle.
+        autonomous patrol boat", "Pentagon selects Palantir for AI program".
+  6-7:  Defense-relevant news worth reading — strategic policy, budget/acquisition
+        decisions, geopolitics with military-industrial implications, new platform
+        or capability reporting, shipbuilding industry news, or military posture
+        shifts. You would recommend this to someone tracking the defense sector.
+        Examples: "Pentagon releases FY2026 budget request", "China expands
+        naval presence in South China Sea", "Shipyard capacity report warns of
+        delays", "Air Force accelerates drone procurement".
+  3-5:  Broadly military or political but limited defense-tech signal — personnel
+        changes, base stories, general international relations without a clear
+        defense-industry angle.
+        Examples: "General Smith confirmed as Joint Chiefs chairman",
+        "US and UK hold joint exercise", "Congress debates defense spending".
+  1-2:  Mentions the military only incidentally; focus is on unrelated topic.
   0:    Completely irrelevant (sports, entertainment, etc.).
 
 Priority keywords (boost score when present): {keywords_str}
@@ -487,7 +495,7 @@ if sam_api_key:
         }
         all_scored_opportunities.append(opp_record)
 
-        if composite >= RELEVANCE_THRESHOLD:
+        if composite >= CONTRACT_THRESHOLD:
             print(f"    >>> HIT! Score {composite}/10 (LLM={llm_score}, KW={keyword_results['keyword_score']})")
             scored_opportunities.append(opp_record)
         else:
